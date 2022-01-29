@@ -4,8 +4,10 @@ from aiogram import Bot, Dispatcher, types, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.utils.exceptions import MessageCantBeDeleted
 
+from commands import set_default_commands
 from config import ADMIN, BOT_TOKEN
 from database import Chat, connect_db
+from langs import langs
 
 bot: Bot = Bot(token=BOT_TOKEN, parse_mode=types.ParseMode.HTML)
 storage = MemoryStorage()
@@ -17,6 +19,7 @@ logging.basicConfig(format=u'%(levelname)-8s [%(asctime)s]  %(message)s', level=
 async def on_startup(dispatcher):
     try:
         await connect_db()
+        await set_default_commands(dispatcher)
         await dispatcher.bot.send_message(ADMIN, "<b>🤖 Bot launched</b>")
     except Exception as err:
         logging.exception(err)
@@ -46,26 +49,56 @@ async def start(message: types.Message):
 @dp.message_handler(lambda m: m.chat.type in ['group', 'supergroup'], commands=['start'])
 async def start_group(message: types.Message):
     members = await bot.get_chat_members_count(message.chat.id)
-    await Chat.create_chat(message.chat.id, members)
-    await message.answer('👋 Hi. I delete ads and messages about new and left members in the group. '
-                         'To do this, make me the group <b>admin</b>')
+    if not await Chat.chat_exist(message.chat.id):
+        await Chat.create_chat(message.chat.id, members)
+    lang = await Chat.get_lang(message.chat.id)
+    await message.answer(langs[lang]['hi'])
+
+
+@dp.message_handler(lambda m: m.chat.type in ['group', 'supergroup'], commands=['uz'])
+async def set_uz_handler(message: types.Message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    username = message.from_user.username
+    user = await bot.get_chat_member(chat_id, user_id)
+    if user.status in ['creator', 'administrator'] or username == 'GroupAnonymousBot':
+        await Chat.set_uz(message.chat.id)
+        members = await bot.get_chat_members_count(message.chat.id)
+        await Chat.refresh_members(message.chat.id, members)
+        await message.reply("Bot tili sifatida 🇺🇿 o'zbek tili o'rnatildi")
+
+
+@dp.message_handler(lambda m: m.chat.type in ['group', 'supergroup'], commands=['en'])
+async def set_uz_handler(message: types.Message):
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+    username = message.from_user.username
+    user = await bot.get_chat_member(chat_id, user_id)
+    if user.status in ['creator', 'administrator'] or username == 'GroupAnonymousBot':
+        await Chat.set_rn(message.chat.id)
+        members = await bot.get_chat_members_count(message.chat.id)
+        await Chat.refresh_members(message.chat.id, members)
+        await message.reply("The language was set to 🇺🇸 english")
 
 
 @dp.message_handler(content_types=['new_chat_members', 'left_chat_member'])
 async def delete_messages(message: types.Message):
+    lang = await Chat.get_lang(message.chat.id)
     try:
         await message.delete()
         members = await bot.get_chat_members_count(message.chat.id)
         await Chat.refresh_members(message.chat.id, members)
         if message.content_type == 'new_chat_members':
             await message.answer(
-                f'👋 Hi <a href="tg://user?id={message.from_user.id}">{message.from_user.full_name}</a>')
+                f'👋 {langs[lang]["HI"]} <a href="tg://user?id={message.from_user.id}">{message.from_user.full_name}</a>')
     except MessageCantBeDeleted:
-        await message.reply('Make me the group <b>admin</b> to delete this message')
+        await message.reply(langs[lang]['make-admin'])
 
 
 @dp.message_handler(lambda m: m.entities and m.chat.type in ['group', 'supergroup'])
 async def delete_links(message: types.Message):
+    print(message.entities)
+    lang = await Chat.get_lang(message.chat.id)
     user_id = message.from_user.id
     username = message.from_user.username
     chat_id = message.chat.id
@@ -73,13 +106,13 @@ async def delete_links(message: types.Message):
     if user.status not in ['creator', 'administrator'] and username != 'GroupAnonymousBot':
         try:
             for entity in message.entities:
-                if entity.type in ['url', 'text_link']:
+                if entity.type in ['url', 'text_link', 'mention', 'bot_command']:
                     await message.delete()
                     await message.answer(
                         f'🚫 <a href="tg://user?id={message.from_user.id}">{message.from_user.full_name}</a> '
-                        f"don't distribute advertisements")
+                        f"{langs[lang]['ad']}")
         except MessageCantBeDeleted:
-            await message.reply('Make me the group <b>admin</b> to delete this ad')
+            await message.reply(langs[lang]['make-admin'])
 
 
 if __name__ == '__main__':
