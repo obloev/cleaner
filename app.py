@@ -52,7 +52,12 @@ async def start_group(message: types.Message):
     if not await Chat.chat_exist(message.chat.id):
         await Chat.create_chat(message.chat.id, members)
     lang = await Chat.get_lang(message.chat.id)
-    await message.answer(langs[lang]['hi'])
+    username = message.from_user.username
+    user = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if user.status in ['creator', 'administrator'] or username == 'GroupAnonymousBot':
+        await message.answer(langs[lang]['hi'])
+    else:
+        await message.delete()
 
 
 @dp.message_handler(lambda m: m.chat.type in ['group', 'supergroup'], commands=['uz'])
@@ -66,6 +71,8 @@ async def set_uz_handler(message: types.Message):
         members = await bot.get_chat_members_count(message.chat.id)
         await Chat.refresh_members(message.chat.id, members)
         await message.reply("Bot tili sifatida 🇺🇿 o'zbek tili o'rnatildi")
+    else:
+        await message.delete()
 
 
 @dp.message_handler(lambda m: m.chat.type in ['group', 'supergroup'], commands=['en'])
@@ -79,6 +86,8 @@ async def set_uz_handler(message: types.Message):
         members = await bot.get_chat_members_count(message.chat.id)
         await Chat.refresh_members(message.chat.id, members)
         await message.reply("The language was set to 🇺🇸 english")
+    else:
+        await message.delete()
 
 
 @dp.message_handler(content_types=['new_chat_members', 'left_chat_member'])
@@ -89,15 +98,15 @@ async def delete_messages(message: types.Message):
         members = await bot.get_chat_members_count(message.chat.id)
         await Chat.refresh_members(message.chat.id, members)
         if message.content_type == 'new_chat_members':
+            user = message.new_chat_members[0]
             await message.answer(
-                f'👋 {langs[lang]["HI"]} <a href="tg://user?id={message.from_user.id}">{message.from_user.full_name}</a>')
+                f'👋 {langs[lang]["HI"]} <a href="tg://user?id={user.id}">{user.full_name}</a>')
     except MessageCantBeDeleted:
         await message.reply(langs[lang]['make-admin'])
 
 
 @dp.message_handler(lambda m: m.entities and m.chat.type in ['group', 'supergroup'])
 async def delete_links(message: types.Message):
-    print(message.entities)
     lang = await Chat.get_lang(message.chat.id)
     user_id = message.from_user.id
     username = message.from_user.username
